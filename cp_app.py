@@ -132,26 +132,19 @@ plot_df = subs_filtered.rename(columns={
     # "Churned Users" залишаємо як є
 })
 
-# 5) Лінійний графік
+# 5) Лінійний графік — тільки «Користувачі на початок»
 fig_subs = px.line(
     plot_df,
     x="date",
-    y=["Користувачі на початок", "Нові користувачі", "Реактивовані користувачі", "Churned Users"],
+    y="Користувачі на початок",
     markers=True,
 )
 
-# 6) Легенда знизу та косметика осей
+# 6) Кастомізація осей; легенду вимикаємо
 fig_subs.update_layout(
     xaxis_title=None,
     yaxis_title=None,
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=-0.3,
-        xanchor="center",
-        x=0.5
-    ),
-    legend_title_text=""
+    showlegend=False
 )
 fig_subs.update_xaxes(tickmode="linear", tickangle=45)
 
