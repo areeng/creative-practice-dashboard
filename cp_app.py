@@ -4,29 +4,32 @@ from datetime import datetime, timedelta
 import plotly.express as px
 
 # ----------------------- Константи джерел даних -----------------------
+# ID файлу Google Drive зі статистикою передплат
+BOUGHT_SUBS_FILE_ID = "1QO4YoBn3oJ3wes3ka0xIl1OJyY3V6VyB"
+
 # ID файлу Google Drive зі статистикою студентів
 STUDENTS_FILE_ID = "1gJTkWUssnOKKlBSIxk6rQETuEaFTA9EL"
 
 # ID файлу Google Drive зі статистикою тріалів
 TRIALS_FILE_ID = "1AsIIcj-2lYQWXHfPoMWsdtA46nqUbduH"
 
-# ID агрегованого CSV по всіх тарифах (Apps Script)
-AGG_TARIFFS_FILE_ID = "18wQuwebEBRu7Io-e142dcD3L3emDeHG1"
+# # ID агрегованого CSV по всіх тарифах (Apps Script)
+# AGG_TARIFFS_FILE_ID = "18wQuwebEBRu7Io-e142dcD3L3emDeHG1"
 
-# Файли тарифів (Google Drive IDs)
-TARIFF_FILES = {
-    "Full Access 0UAH": "1XoUhnsGUeVL3qwHMYJbk4mpCn3lhoEkB",
-    "Full Access 250UAH": "1G60JUAk_vQVXVQnjZF9uK2VwUbYDlK6P",
-    "Full Access 350UAH": "1eYubeexGVF5MKJFZIF6ZOwEfDDad1zPB",
-    "Full Access 390UAH": "1xeTeJV8JvOowE8JG5I6tog3euIKvDDNj",
-    "Full Access 550UAH": "1b5fMQ_5Y522zJssO_AikhkLBTfI3p_Bf",
-    "Full Access 1000UAH": "1mOZsP89AhTufFvG2nSmbV6w5GSOKyGVx",
-    "Full Access 1200UAH": "1M1u8AAQHFv81BNtlvi4P6llT0OO817dj",
-    "Theory Only 0UAH": "1SyARqxHQzEPlK9GEuUvNV1SEFeghJ1pr",
-    "Theory Only 250UAH": "1q4c0m434WK46Thei_pgkdVB5lLDnQqZz",
-    "Theory Only 500UAH": "1eFhAfdSC2LOLX3tJX5BWyGM693d0ASyK",
-    "Theory Only 600UAH": "1EdZRWRQxLUfKprV5GgRWjjR_Jzyc7CEh",
-}
+# # Файли тарифів (Google Drive IDs)
+# TARIFF_FILES = {
+#     "Full Access 0UAH": "1XoUhnsGUeVL3qwHMYJbk4mpCn3lhoEkB",
+#     "Full Access 250UAH": "1G60JUAk_vQVXVQnjZF9uK2VwUbYDlK6P",
+#     "Full Access 350UAH": "1eYubeexGVF5MKJFZIF6ZOwEfDDad1zPB",
+#     "Full Access 390UAH": "1xeTeJV8JvOowE8JG5I6tog3euIKvDDNj",
+#     "Full Access 550UAH": "1b5fMQ_5Y522zJssO_AikhkLBTfI3p_Bf",
+#     "Full Access 1000UAH": "1mOZsP89AhTufFvG2nSmbV6w5GSOKyGVx",
+#     "Full Access 1200UAH": "1M1u8AAQHFv81BNtlvi4P6llT0OO817dj",
+#     "Theory Only 0UAH": "1SyARqxHQzEPlK9GEuUvNV1SEFeghJ1pr",
+#     "Theory Only 250UAH": "1q4c0m434WK46Thei_pgkdVB5lLDnQqZz",
+#     "Theory Only 500UAH": "1eFhAfdSC2LOLX3tJX5BWyGM693d0ASyK",
+#     "Theory Only 600UAH": "1EdZRWRQxLUfKprV5GgRWjjR_Jzyc7CEh",
+# }
 
 # ----------------------- Кешоване завантаження CSV -------------------
 @st.cache_data(show_spinner=False)
@@ -110,29 +113,25 @@ end_ts = pd.to_datetime(end_date)
 if start_ts > end_ts:
     start_ts, end_ts = end_ts, start_ts
 
-# ----------------------- Графік: Передплати (агрегований CSV) -----------------------
+# ----------------------- Графік: Передплати -----------------------
 st.subheader("Передплати")
 
-# 1) Завантажуємо вже агрегований Apps Script-ом файл
-subs_df = load_csv_from_gdrive(AGG_TARIFFS_FILE_ID).copy()
+# 1) Завантажуємо CSV з купленими передплатами (2 колонки: date,total)
+subs_df = load_csv_from_gdrive(BOUGHT_SUBS_FILE_ID).copy()
 
-# 2) Фільтр за вибраним періодом
+# 2) Гарантуємо коректні типи
+subs_df["date"] = pd.to_datetime(subs_df["date"], format="%Y-%m-%d", errors="coerce")
+subs_df = subs_df.dropna(subset=["date"]).sort_values("date")
+subs_df["total"] = pd.to_numeric(subs_df["total"], errors="coerce").fillna(0)
+
+# 3) Фільтр за вибраним періодом
 mask = (subs_df["date"] >= start_ts) & (subs_df["date"] <= end_ts)
 subs_filtered = subs_df.loc[mask].copy()
 
-# 3) Переконуємось, що числові колонки — саме числа
-for col in ["start", "new", "reactivated", "Churned Users"]:
-    subs_filtered[col] = pd.to_numeric(subs_filtered[col], errors="coerce").fillna(0)
+# 4) Перейменування для підпису на графіку
+plot_df = subs_filtered.rename(columns={"total": "Користувачі на початок"})
 
-# 4) Підписи серій для легенди
-plot_df = subs_filtered.rename(columns={
-    "start": "Користувачі на початок",
-    "new": "Нові користувачі",
-    "reactivated": "Реактивовані користувачі",
-    # "Churned Users" залишаємо як є
-})
-
-# 5) Лінійний графік — тільки «Користувачі на початок»
+# 5) Лінійний графік (X = date, Y = total)
 fig_subs = px.line(
     plot_df,
     x="date",
@@ -140,12 +139,8 @@ fig_subs = px.line(
     markers=True,
 )
 
-# 6) Кастомізація осей; легенду вимикаємо
-fig_subs.update_layout(
-    xaxis_title=None,
-    yaxis_title=None,
-    showlegend=False
-)
+# 6) Кастомізація: осі без заголовків, легенду вимикаємо
+fig_subs.update_layout(xaxis_title=None, yaxis_title=None, showlegend=False)
 fig_subs.update_xaxes(tickmode="linear", tickangle=45)
 
 # 7) Показ графіка
